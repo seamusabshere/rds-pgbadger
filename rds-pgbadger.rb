@@ -5,6 +5,11 @@ require 'yaml'
 require 'ox'
 require 'aws-sdk-core'
 
+require 'vault'
+require 'redis'
+require 'lock_and_cache'
+LockAndCache.storage = Redis.new
+
 options = {}
 OptionParser.new do |opts|
     opts.banner = "Usage: rds-pgbadger.rb [options]"
@@ -18,13 +23,19 @@ end.parse!
 raise OptionParser::MissingArgument.new(:env) if options[:env].nil?
 raise OptionParser::MissingArgument.new(:instance_id) if options[:instance_id].nil?
 
-creds = YAML.load(File.read(File.expand_path('~/.fog')))
+def creds
+  @creds ||= LockAndCache.lock_and_cache('rdspgbadger-creds', expires: 86_400) do
+    memo = Vault.logical.read('aws/creds/administrator').data
+    sleep 5 # let the key start to work
+    memo
+  end
+end
 
 puts "Instantiating RDS client for #{options[:env]} environment."
 rds = Aws::RDS::Client.new(
   region: 'us-east-1',
-  access_key_id: creds[options[:env]]['aws_access_key_id'],
-  secret_access_key: creds[options[:env]]['aws_secret_access_key']
+  access_key_id: creds[:access_key],
+  secret_access_key: creds[:secret_key]
 )
 log_files = rds.describe_db_log_files(db_instance_identifier: options[:instance_id], filename_contains: "postgresql.log.#{options[:date]}")[:describe_db_log_files].map(&:log_file_name)
 
