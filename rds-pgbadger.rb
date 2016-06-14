@@ -28,14 +28,14 @@ rds = Aws::RDS::Client.new(
 )
 log_files = rds.describe_db_log_files(db_instance_identifier: options[:instance_id], filename_contains: "postgresql.log.#{options[:date]}")[:describe_db_log_files].map(&:log_file_name)
 
-dir_name = "#{options[:instance_id]}-#{Time.now.to_i}"
+dir_name = "#{options[:instance_id]}-#{options[:date]}-#{Time.now.to_i}"
 
 Dir.mkdir("out/#{dir_name}")
 Dir.mkdir("out/#{dir_name}/error")
 log_files.each do |log_file|
   puts "Downloading log file: #{log_file}"
   open("out/#{dir_name}/#{log_file}", 'w') do |f|
-    rds.download_db_log_file_portion(db_instance_identifier: options[:instance_id], log_file_name: log_file).each do |r|
+    rds.download_db_log_file_portion(db_instance_identifier: options[:instance_id], log_file_name: log_file, marker: '0', number_of_lines: 9999).each do |r|
       print "."
       f.puts r[:log_file_data]
     end
